@@ -21,27 +21,27 @@ jobs:
             sudo cat /var/lib/rancher/k3s/server/node-token > /tmp/k3s_token
             chmod 644 /tmp/k3s_token
 
-      - name: Fetch Token from Master
+      - name: Fetch Token and Update Secret
         run: |
-          # 1. 【關鍵】將 GitHub Secret 的內容寫成 Runner 上的實體檔案
+          # 1. 把 Secret (字串) 變成 Runner 身上的檔案 (實體鑰匙)
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
-          
-          # 2. 修改權限（SSH 規定私鑰權限必須是 600，否則會被拒絕使用）
           chmod 600 private_key
-          
-          # 3. 現在 Runner 有門票了，執行連線
-          # 使用 -i 指定剛才產生的 private_key 檔案
-          RAW_TOKEN=$(ssh -i private_key -o StrictHostKeyChecking=no root@${{ secrets.MASTER_IP }} 'cat /tmp/k3s_token')
-          
+
+          # 2. 透過這把鑰匙，連進 Master 把 Token 讀出來存進變數
+          # 我們直接用 ssh 執行 cat，並把結果抓回來
+          RAW_TOKEN=$(ssh -i private_key -o StrictHostKeyChecking=no root@${{ secrets.MASTER_IP }} 'cat /var/lib/rancher/k3s/server/node-token')
+
+          # 3. 檢查有沒有抓到東西 (避免抓到空的導致後面噴錯)
           if [ -z "$RAW_TOKEN" ]; then
-            echo "Error: Failed to fetch token"
+            echo "Error: Could not fetch K3s token from Master!"
             exit 1
           fi
-          
-          # 4. 把抓到的 Token 存進這場 Action 的記憶體裡
-          echo "K3S_TOKEN_VAL=$RAW_TOKEN" >> $GITHUB_ENV
-          
-          # 5. 用完即丟
+
+          # 4. 把這個 Token 自動寫入 GitHub 的 Secret 庫 (取代人手複製)
+          echo "GH_TOKEN=${{ github.token }}" >> $GITHUB_ENV
+          gh secret set K3S_TOKEN --body "$RAW_TOKEN" --repo ${{ github.repository }}
+
+          # 5. 把鑰匙刪掉，確保安全
           rm private_key
 
       - name: Update GitHub Secret via CLI
