@@ -16,7 +16,8 @@ jobs:
             # 0. 優先安裝iptable k3要用
             dnf install -y iptables iptables-services
             # 1 . 接著才是K3
-            curl -sfL https://get.k3s.io | sh -
+            curl -sfL https://get.k3s.io | \
+            INSTALL_K3S_EXEC="--write-kubeconfig-mode 644 --node-name k3s-master" sh -
             sleep 5
             # 確保檔案權限允許讀取（K3s 預設是 600 root，我們暫時改成 644 方便抓取）
             sudo chmod 644 /var/lib/rancher/k3s/server/node-token
