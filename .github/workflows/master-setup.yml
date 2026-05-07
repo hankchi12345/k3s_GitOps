@@ -44,9 +44,23 @@ jobs:
           # 5. 把鑰匙刪掉，確保安全
           rm private_key
 
-      - name: Update GitHub Secret via CLI
+      - name: Fetch Token and Save to Secret
+        uses: appleboy/ssh-action@master
+        id: k3s_master
+        with:
+          host: ${{ secrets.MASTER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # 這裡我們只做一件事：把 Token 印出來
+          script: cat /var/lib/rancher/k3s/server/node-token
+
+      - name: Update GitHub Secret
+        # 關鍵：這裡必須給予 GH_TOKEN 權限，且必須在 Repo 設定中開啟 Write 權限
         env:
-          GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }} # 需具備 repo 權限的 PAT
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # 使用 GitHub CLI 直接更新 Secret，這不會顯示在 Log 中
-          gh secret set K3S_TOKEN --body "${{ env.K3S_TOKEN_VAL }}" --repo ${{ github.repository }}
+          # 取得上一步印出的內容 (stdout)
+          TOKEN="${{ steps.k3s_master.outputs.stdout }}"
+          
+          # 去除多餘的換行或空白，並寫入 Secret
+          echo "$TOKEN" | tr -d '\n' | gh secret set K3S_TOKEN --repo ${{ github.repository }}
