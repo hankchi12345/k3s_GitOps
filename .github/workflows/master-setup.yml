@@ -1,36 +1,38 @@
-name: 01-Master-Setup
+name: 01-Master-Setup-Complete
 on: 
   workflow_dispatch:
 
 jobs:
-  setup-master:
+  master-infrastructure:
     runs-on: ubuntu-latest
     steps:
-      - name: Install K3s and Prepare Token
+      - name: 1. 連線至 Master 並安裝 K3s
         uses: appleboy/ssh-action@master
-        id: k3s_setup  # 給這一步一個 ID，方便後面抓資料
+        id: k3s_installer
         with:
           host: ${{ secrets.MASTER_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 安裝 K3s
+            # 改名並安裝 K3s
+            sudo hostnamectl set-hostname k3s-master
             curl -sfL https://get.k3s.io | sh -
             
-            # 等待一下確保 Token 檔案已產生
+            # 等待 5 秒讓系統產生 Token 檔案
             sleep 5
             
-            # 直接把 Token 印在畫面上，這會被 stdout 抓到
+            # 把 Token 印出來，這樣下一階段才抓得到
             sudo cat /var/lib/rancher/k3s/server/node-token
 
-      - name: Update GitHub Secret
-        # 關鍵在於這裡的 env 設定！
+      - name: 2. 將 Token 自動同步至 GitHub 保險箱 (需 PAT)
+        # 如果你不想搞 PAT，這一步會報錯，但你可以在 Log 看到 Token 自己手動貼
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.MY_PAT }} 
         run: |
-          # 從上一步的 stdout 取得 Token
-          # 注意：id 要對應上面設定的 k3s_setup
-          RAW_TOKEN="${{ steps.k3s_setup.outputs.stdout }}"
+          # 抓取上一步輸出的最後一行 (即 Token)
+          RAW_TOKEN="${{ steps.k3s_installer.outputs.stdout }}"
           
-          # 清洗資料（移除換行），然後直接寫入 Secret
-          echo "$RAW_TOKEN" | tr -d '\n' | gh secret set K3S_TOKEN --repo ${{ github.repository }}
+          # 清除雜訊並更新 Secret
+          echo "$RAW_TOKEN" | tr -d '\n' | gh secret set K3S_TOKEN_MASTER --repo ${{ github.repository }}
+          
+          echo " Token 已成功自動寫回保險箱！"
