@@ -23,14 +23,14 @@ jobs:
 
       - name: Fetch Token from Master
         run: |
-          # 1. 將 Secret 寫入實體檔案
+          # 1. 【關鍵】將 GitHub Secret 的內容寫成 Runner 上的實體檔案
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
           
-          # 2. 嚴格限制私鑰權限（否則 SSH 會報錯拒絕連線）
+          # 2. 修改權限（SSH 規定私鑰權限必須是 600，否則會被拒絕使用）
           chmod 600 private_key
           
-          # 3. 執行 SSH 抓取 Token
-          # 注意：這裡使用 -i 指定剛剛建立的檔案
+          # 3. 現在 Runner 有門票了，執行連線
+          # 使用 -i 指定剛才產生的 private_key 檔案
           RAW_TOKEN=$(ssh -i private_key -o StrictHostKeyChecking=no root@${{ secrets.MASTER_IP }} 'cat /tmp/k3s_token')
           
           if [ -z "$RAW_TOKEN" ]; then
@@ -38,10 +38,10 @@ jobs:
             exit 1
           fi
           
-          # 4. 寫入 GITHUB_ENV 供下一個 Step (Update Secret) 使用
+          # 4. 把抓到的 Token 存進這場 Action 的記憶體裡
           echo "K3S_TOKEN_VAL=$RAW_TOKEN" >> $GITHUB_ENV
           
-          # 5. 安全起見，刪除暫存的私鑰
+          # 5. 用完即丟
           rm private_key
 
       - name: Update GitHub Secret via CLI
