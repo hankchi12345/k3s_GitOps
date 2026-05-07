@@ -18,9 +18,9 @@ jobs:
             
             # 2. 執行 K3s 加入指令
             # K3S_URL 指向 Master 的 6443 埠
-            # K3S_TOKEN 則是剛剛 Master 自動存入 GitHub 的那個保險箱變數
-            curl -sfL https://get.k3s.io | K3S_URL=https://${{ secrets.MASTER_IP }}:6443 \
-            K3S_TOKEN=${{ secrets.K3S_TOKEN_MASTER }} sh -
+            # K3S_TOKEN 則是剛剛 Master 自動存入 GitHub 的那個保險箱變數，Worker 加入的那一刻，標籤就已經存
+            curl -sfL https://get.k3s.io | K3S_URL=$URL K3S_TOKEN=$TOKEN \
+            INSTALL_K3S_EXEC="agent --node-label node-role.kubernetes.io/worker=worker --node-label project=k3s-gitops" sh -
             
             # 3. 檢查 K3s-agent 服務狀態
             systemctl is-active --quiet k3s-agent && echo " Worker joined successfully!"
