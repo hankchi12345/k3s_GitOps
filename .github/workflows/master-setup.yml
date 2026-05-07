@@ -6,38 +6,45 @@ jobs:
   master-infrastructure:
     runs-on: ubuntu-latest
     steps:
-      - name: 1. 連線至 Master 並安裝 K3s
+      - name: 1. Install K3s on Master
         uses: appleboy/ssh-action@master
-        id: k3s_installer
         with:
           host: ${{ secrets.MASTER_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 改名並安裝 K3s
-            sudo hostnamectl set-hostname k3s-master
             curl -sfL https://get.k3s.io | sh -
-            
-            # 等待 5 秒讓系統產生 Token 檔案
             sleep 5
-            
-            # 把 Token 印出來，這樣下一階段才抓得到
-            sudo cat /var/lib/rancher/k3s/server/node-token
+            # 確保檔案權限允許讀取（K3s 預設是 600 root，我們暫時改成 644 方便抓取）
+            sudo chmod 644 /var/lib/rancher/k3s/server/node-token
 
-      - name: 2. 將 Token 自動同步至 GitHub 保險箱 (需 PAT)
-        # 如果你不想搞 PAT，這一步會報錯，但你可以在 Log 看到 Token 自己手動貼
-        env:
-          GH_TOKEN: ${{ secrets.MY_PAT }}
+      - name: 2. Direct Download Token File (SCP)
         run: |
-          # 關鍵：用 tail -n 1 唯讀最後一行，並用 tr 刪除所有不可見字元（換行、空格）
-          RAW_TOKEN=$(echo "${{ steps.k3s_setup.outputs.stdout }}" | tail -n 1 | tr -d '\r\n ' )
-          
-          # 檢查長度。正常 K3s Token （約 50-100 字元以上）
-          echo "Debug: Token Length is ${#RAW_TOKEN}"
-          
-          if [ ${#RAW_TOKEN} -lt 10 ]; then
-            echo " Error: Token content looks wrong!"
+          # 建立臨時私鑰檔案（這是 SSH 連線必須的步驟）
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
+          chmod 600 private_key
+
+          # 使用 scp 直接把遠端檔案抓到 Runner 本地
+          scp -i private_key -o StrictHostKeyChecking=no \
+            root@${{ secrets.MASTER_IP }}:/var/lib/rancher/k3s/server/node-token ./master_token
+
+          # 檢查檔案是否真的抓到了
+          if [ ! -f ./master_token ]; then
+            echo " Failed to download token file!"
             exit 1
           fi
 
+      - name: 3. Read File and Update Secret
+        env:
+          GH_TOKEN: ${{ secrets.MY_PAT }}
+        run: |
+          # 直接從本地檔案讀取
+          RAW_TOKEN=$(cat ./master_token | tr -d '\r\n ' )
+          
+          echo "Debug: Token Length is ${#RAW_TOKEN}"
+          
+          # 更新 GitHub Secret
           echo "$RAW_TOKEN" | gh secret set K3S_TOKEN_MASTER --repo ${{ github.repository }}
+          
+          # 清理現場
+          rm private_key ./master_token
