@@ -31,4 +31,4 @@ jobs:
           GH_TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN }} # 需具備 repo 權限的 PAT
         run: |
           # 使用 GitHub CLI 直接更新 Secret，這不會顯示在 Log 中
-          gh secret set K3S_TOKEN --body "${{ env.K3S_TOKEN_VAL }}"
+          gh secret set K3S_TOKEN --body "${{ env.K3S_TOKEN_VAL }}" --repo ${{ github.repository }}
