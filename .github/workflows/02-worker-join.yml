@@ -1,0 +1,26 @@
+name: 02-Worker-Join
+on: 
+  workflow_dispatch: # 手動觸發
+
+jobs:
+  join-cluster:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Join Worker to K3s Cluster
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.WORKER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # 1. 設定主機名稱 (便於識別)
+            sudo hostnamectl set-hostname k3s-worker-01
+            
+            # 2. 執行 K3s 加入指令
+            # K3S_URL 指向 Master 的 6443 埠
+            # K3S_TOKEN 則是剛剛 Master 自動存入 GitHub 的那個保險箱變數
+            curl -sfL https://get.k3s.io | K3S_URL=https://${{ secrets.MASTER_IP }}:6443 \
+            K3S_TOKEN=${{ secrets.K3S_TOKEN_MASTER }} sh -
+            
+            # 3. 檢查 K3s-agent 服務狀態
+            systemctl is-active --quiet k3s-agent && echo " Worker joined successfully!"
