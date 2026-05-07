@@ -27,12 +27,17 @@ jobs:
       - name: 2. 將 Token 自動同步至 GitHub 保險箱 (需 PAT)
         # 如果你不想搞 PAT，這一步會報錯，但你可以在 Log 看到 Token 自己手動貼
         env:
-          GH_TOKEN: ${{ secrets.MY_PAT }} 
+          GH_TOKEN: ${{ secrets.MY_PAT }}
         run: |
-          # 抓取上一步輸出的最後一行 (即 Token)
-          RAW_TOKEN="${{ steps.k3s_installer.outputs.stdout }}"
+          # 關鍵：用 tail -n 1 唯讀最後一行，並用 tr 刪除所有不可見字元（換行、空格）
+          RAW_TOKEN=$(echo "${{ steps.k3s_setup.outputs.stdout }}" | tail -n 1 | tr -d '\r\n ' )
           
-          # 清除雜訊並更新 Secret
-          echo "$RAW_TOKEN" | tr -d '\n' | gh secret set K3S_TOKEN_MASTER --repo ${{ github.repository }}
+          # 檢查長度。正常 K3s Token （約 50-100 字元以上）
+          echo "Debug: Token Length is ${#RAW_TOKEN}"
           
-          echo " Token 已成功自動寫回保險箱！"
+          if [ ${#RAW_TOKEN} -lt 10 ]; then
+            echo " Error: Token content looks wrong!"
+            exit 1
+          fi
+
+          echo "$RAW_TOKEN" | gh secret set K3S_TOKEN_MASTER --repo ${{ github.repository }}
