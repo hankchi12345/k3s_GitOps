@@ -6,61 +6,31 @@ jobs:
   setup-master:
     runs-on: ubuntu-latest
     steps:
-      - name: Install K3s and Update Secret
+      - name: Install K3s and Prepare Token
         uses: appleboy/ssh-action@master
-        id: master_ssh
+        id: k3s_setup  # 給這一步一個 ID，方便後面抓資料
         with:
           host: ${{ secrets.MASTER_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. 安裝 K3s
+            # 安裝 K3s
             curl -sfL https://get.k3s.io | sh -
             
-            # 2. 取得 Token 並透過一個暫存檔傳出
-            sudo cat /var/lib/rancher/k3s/server/node-token > /tmp/k3s_token
-            chmod 644 /tmp/k3s_token
-
-      - name: Fetch Token and Update Secret
-        run: |
-          # 1. 把 Secret (字串) 變成 Runner 身上的檔案 (實體鑰匙)
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
-          chmod 600 private_key
-
-          # 2. 透過這把鑰匙，連進 Master 把 Token 讀出來存進變數
-          # 我們直接用 ssh 執行 cat，並把結果抓回來
-          RAW_TOKEN=$(ssh -i private_key -o StrictHostKeyChecking=no root@${{ secrets.MASTER_IP }} 'cat /var/lib/rancher/k3s/server/node-token')
-
-          # 3. 檢查有沒有抓到東西 (避免抓到空的導致後面噴錯)
-          if [ -z "$RAW_TOKEN" ]; then
-            echo "Error: Could not fetch K3s token from Master!"
-            exit 1
-          fi
-
-          # 4. 把這個 Token 自動寫入 GitHub 的 Secret 庫 (取代人手複製)
-          echo "GH_TOKEN=${{ github.token }}" >> $GITHUB_ENV
-          gh secret set K3S_TOKEN --body "$RAW_TOKEN" --repo ${{ github.repository }}
-
-          # 5. 把鑰匙刪掉，確保安全
-          rm private_key
-
-      - name: Fetch Token and Save to Secret
-        uses: appleboy/ssh-action@master
-        id: k3s_master
-        with:
-          host: ${{ secrets.MASTER_IP }}
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # 這裡我們只做一件事：把 Token 印出來
-          script: cat /var/lib/rancher/k3s/server/node-token
+            # 等待一下確保 Token 檔案已產生
+            sleep 5
+            
+            # 直接把 Token 印在畫面上，這會被 stdout 抓到
+            sudo cat /var/lib/rancher/k3s/server/node-token
 
       - name: Update GitHub Secret
-        # 關鍵：這裡必須給予 GH_TOKEN 權限，且必須在 Repo 設定中開啟 Write 權限
+        # 關鍵在於這裡的 env 設定！
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # 取得上一步印出的內容 (stdout)
-          TOKEN="${{ steps.k3s_master.outputs.stdout }}"
+          # 從上一步的 stdout 取得 Token
+          # 注意：id 要對應上面設定的 k3s_setup
+          RAW_TOKEN="${{ steps.k3s_setup.outputs.stdout }}"
           
-          # 去除多餘的換行或空白，並寫入 Secret
-          echo "$TOKEN" | tr -d '\n' | gh secret set K3S_TOKEN --repo ${{ github.repository }}
+          # 清洗資料（移除換行），然後直接寫入 Secret
+          echo "$RAW_TOKEN" | tr -d '\n' | gh secret set K3S_TOKEN --repo ${{ github.repository }}
