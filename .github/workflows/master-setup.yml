@@ -13,6 +13,9 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # 0. 優先安裝iptable k3要用
+            dnf install -y iptables iptables-services
+            # 1 . 接著才是K3
             curl -sfL https://get.k3s.io | sh -
             sleep 5
             # 確保檔案權限允許讀取（K3s 預設是 600 root，我們暫時改成 644 方便抓取）

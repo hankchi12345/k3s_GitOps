@@ -13,6 +13,8 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            # 0. 優先安裝iptable k3要用
+            dnf install -y iptables iptables-services
             # 1. 設定主機名稱 (便於識別)
             sudo hostnamectl set-hostname k3s-worker-01
             
