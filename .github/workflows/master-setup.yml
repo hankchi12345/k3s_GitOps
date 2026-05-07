@@ -21,10 +21,28 @@ jobs:
             sudo cat /var/lib/rancher/k3s/server/node-token > /tmp/k3s_token
             chmod 644 /tmp/k3s_token
 
-      - name: Fetch Token from Master to Action Runner
+      - name: Fetch Token from Master
         run: |
-          # 使用 scp 將 token 抓回到 GitHub Runner 的環境變數中
-          echo "K3S_TOKEN_VAL=$(ssh -i private_key -o StrictHostKeyChecking=no root@${{ secrets.MASTER_IP }} 'cat /tmp/k3s_token')" >> $GITHUB_ENV
+          # 1. 將 Secret 寫入實體檔案
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
+          
+          # 2. 嚴格限制私鑰權限（否則 SSH 會報錯拒絕連線）
+          chmod 600 private_key
+          
+          # 3. 執行 SSH 抓取 Token
+          # 注意：這裡使用 -i 指定剛剛建立的檔案
+          RAW_TOKEN=$(ssh -i private_key -o StrictHostKeyChecking=no root@${{ secrets.MASTER_IP }} 'cat /tmp/k3s_token')
+          
+          if [ -z "$RAW_TOKEN" ]; then
+            echo "Error: Failed to fetch token"
+            exit 1
+          fi
+          
+          # 4. 寫入 GITHUB_ENV 供下一個 Step (Update Secret) 使用
+          echo "K3S_TOKEN_VAL=$RAW_TOKEN" >> $GITHUB_ENV
+          
+          # 5. 安全起見，刪除暫存的私鑰
+          rm private_key
 
       - name: Update GitHub Secret via CLI
         env:
