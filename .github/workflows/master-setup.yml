@@ -15,6 +15,8 @@ jobs:
           script: |
             # 0. 優先安裝iptable k3要用
             dnf install -y iptables iptables-services
+            # 0.1 改名
+            sudo hostnamectl set-hostname k3s-master
             # 1 . 接著才是K3
             curl -sfL https://get.k3s.io | \
             INSTALL_K3S_EXEC="--write-kubeconfig-mode 644 --node-name k3s-master" sh -

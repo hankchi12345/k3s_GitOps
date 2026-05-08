@@ -19,6 +19,8 @@ jobs:
             sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /var/lib/kubelet
             sudo ip link delete cni0 || true
             sudo ip link delete flannel.1 || true
+            # 0.1 改名
+            sudo hostnamectl set-hostname k3s-worker-01
             
             # 2. 安裝 Master (最乾淨的參數，不加任何標籤)
             curl -sfL https://get.k3s.io | \
