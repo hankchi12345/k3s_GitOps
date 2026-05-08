@@ -12,20 +12,28 @@ jobs:
           host: ${{ secrets.WORKER_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          steps:
+      - name: Join K3s Worker
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.WORKER_IP }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          # 1. 把 GitHub 的 Secret 餵進來
+          envs: K3S_TOKEN_MASTER, MASTER_IP
           script: |
-            # 1. 補齊工具
-            sudo dnf install -y iptables iptables-services
+            # 2. 補齊 iptables (EL10/EL9 必需)
+            dnf install -y iptables iptables-services
             
-            # 2. 【最重要】先正名
-            sudo hostnamectl set-hostname k3s-worker-01
+            # 3. 改名 (確保在安裝前完成，身分才不會錯)
+            hostnamectl set-hostname k3s-worker-01
             
-            # 3. 徹底清理
-            /usr/local/bin/k3s-agent-uninstall.sh || true
-            sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s
+            # 4. 連上 Master
+            # 直接使用 envs 傳進來的變數
+            curl -sfL https://get.k3s.io | \
+            K3S_URL="https://${MASTER_IP}:6443" \
+            K3S_TOKEN="${K3S_TOKEN_MASTER}" \
+            sh -
             
-            # 4. 變數準備
-            TOKEN=$K3S_TOKEN_MASTER
-            URL="https://$MASTER_IP:6443"
-            
-            # 5. 加入叢集
-            curl -sfL https://get.k3s.io | K3S_URL=$URL K3S_TOKEN=$TOKEN sh -
+            # 5. 驗證狀態
+            systemctl is-active --quiet k3s-agent && echo " k3s-worker-01 Joined Successfully!"
