@@ -30,10 +30,11 @@ jobs:
             
             # 4. 連上 Master
             # 直接使用 envs 傳進來的變數
-            curl -sfL https://get.k3s.io | \
-            K3S_URL="https://${MASTER_IP}:6443" \
-            K3S_TOKEN="${K3S_TOKEN_MASTER}" \
-            sh -
+            export K3S_URL="https://${MASTER_IP}:6443"
+            export K3S_TOKEN="${K3S_TOKEN_MASTER}"
+
+
+            curl -sfL https://get.k3s.io | sh -
             
             # 5. 驗證狀態
             systemctl is-active --quiet k3s-agent && echo " k3s-worker-01 Joined Successfully!"
