@@ -13,16 +13,17 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 0. 優先安裝iptable k3要用
-            dnf install -y iptables iptables-services
-            # 1. 設定主機名稱 (便於識別)
-            sudo hostnamectl set-hostname k3s-worker-01
+            # 1. 補齊工具與終極清理 (確保不會遇到 Status 4)
+            sudo dnf install -y iptables iptables-services
+            /usr/local/bin/k3s-uninstall.sh || true
+            sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /var/lib/kubelet
+            sudo ip link delete cni0 || true
+            sudo ip link delete flannel.1 || true
             
-            # 2. 執行 K3s 加入指令
-            # K3S_URL 指向 Master 的 6443 埠
-            # K3S_TOKEN 則是剛剛 Master 自動存入 GitHub 的那個保險箱變數，Worker 加入的那一刻，標籤就已經存
-            curl -sfL https://get.k3s.io | K3S_URL=$URL K3S_TOKEN=$TOKEN \
-            INSTALL_K3S_EXEC="--node-label node-role.kubernetes.io/worker=worker --node-label project=k3s-gitops" sh -
+            # 2. 安裝 Master (最乾淨的參數，不加任何標籤)
+            curl -sfL https://get.k3s.io | \
+            INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644 --cluster-init" sh -
             
-            # 3. 檢查 K3s-agent 服務狀態
-            systemctl is-active --quiet k3s-agent && echo " Worker joined successfully!"
+            # 3. 等待啟動與確認 Token
+            sleep 10
+            sudo cat /var/lib/rancher/k3s/server/node-token
