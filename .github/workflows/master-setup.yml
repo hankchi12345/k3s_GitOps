@@ -13,28 +13,38 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 0. 優先安裝iptable k3要用
+            # 0. 優先安裝 iptables (AlmaLinux/RHEL 10 必須)
             dnf install -y iptables iptables-services
-            # 0.1 改名
+            
+            # 0.1 正名
             sudo hostnamectl set-hostname k3s-master
-            # 1 . 接著才是K3
+            
+            # 1. 安裝 K3s Server
+            # --write-kubeconfig-mode 644 方便以後遠端管理
+            # --node-name 確保節點名稱一致
             curl -sfL https://get.k3s.io | \
             INSTALL_K3S_EXEC="--write-kubeconfig-mode 644 --node-name k3s-master" sh -
-            sleep 5
-            # 確保檔案權限允許讀取（K3s 預設是 600 root，我們暫時改成 644 方便抓取）
+            
+            # 2. 等待 Token 生成並調整權限
+            # 迴圈檢查直到檔案出現，避免 SCP 抓空
+            for i in {1..10}; do
+              [ -f /var/lib/rancher/k3s/server/node-token ] && break
+              echo "Waiting for token..."
+              sleep 2
+            done
+            
             sudo chmod 644 /var/lib/rancher/k3s/server/node-token
 
       - name: 2. Direct Download Token File (SCP)
         run: |
-          # 建立臨時私鑰檔案（這是 SSH 連線必須的步驟）
+          # 建立臨時私鑰
           echo "${{ secrets.SSH_PRIVATE_KEY }}" > private_key
           chmod 600 private_key
 
-          # 使用 scp 直接把遠端檔案抓到 Runner 本地
+          # 使用 SCP 抓取 Token 檔案
           scp -i private_key -o StrictHostKeyChecking=no \
             root@${{ secrets.MASTER_IP }}:/var/lib/rancher/k3s/server/node-token ./master_token
 
-          # 檢查檔案是否真的抓到了
           if [ ! -f ./master_token ]; then
             echo " Failed to download token file!"
             exit 1
@@ -44,13 +54,19 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MY_PAT }}
         run: |
-          # 直接從本地檔案讀取
+          # 讀取並清理字串（移除換行與空格）
           RAW_TOKEN=$(cat ./master_token | tr -d '\r\n ' )
           
           echo "Debug: Token Length is ${#RAW_TOKEN}"
           
+          if [ ${#RAW_TOKEN} -lt 10 ]; then
+            echo " Token content is too short or empty!"
+            exit 1
+          fi
+
           # 更新 GitHub Secret
           echo "$RAW_TOKEN" | gh secret set K3S_TOKEN_MASTER --repo ${{ github.repository }}
           
           # 清理現場
           rm private_key ./master_token
+          echo " K3S_TOKEN_MASTER updated successfully!"
