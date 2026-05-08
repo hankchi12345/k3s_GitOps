@@ -6,34 +6,38 @@ jobs:
   join-cluster:
     runs-on: ubuntu-latest
     steps:
-      - name: Join Worker to K3s Cluster
-        uses: appleboy/ssh-action@master
-        with:
-          host: ${{ secrets.WORKER_IP }}
-          username: root
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          steps:
       - name: Join K3s Worker
         uses: appleboy/ssh-action@master
         with:
           host: ${{ secrets.WORKER_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # 1. 把 GitHub 的 Secret 餵進來
+          # 1. 確保變數名稱與 GitHub Secret 一致
           envs: K3S_TOKEN_MASTER, MASTER_IP
           script: |
-            # 2. 補齊 iptables (EL10/EL9 必需)
-            dnf install -y iptables iptables-services
             
-            # 3. 改名 (確保在安裝前完成，身分才不會錯)
+            # --- 基礎設定 ---
+            dnf install -y iptables iptables-services
             hostnamectl set-hostname k3s-worker-01
             
-            # 4. 連上 Master
-            # 直接使用 envs 傳進來的變數
-            curl -sfL https://get.k3s.io | \
-            K3S_URL="https://${MASTER_IP}:6443" \
-            K3S_TOKEN="${K3S_TOKEN_MASTER}" \
-            sh -s -
+           
+            # 這是為了確保 GitHub 的變數真的有傳進這台主機
+            export K3S_URL="https://${MASTER_IP}:6443"
+            export K3S_TOKEN="${K3S_TOKEN_MASTER}"
             
-            # 5. 驗證狀態
+            echo "Checking environment variables..."
+            echo "Master URL: $K3S_URL"
+            echo "Token length: ${#K3S_TOKEN}"
+            
+            # 如果 Token 長度不夠，直接報錯不執行，省得 Status 4 又跑出來
+            if [ ${#K3S_TOKEN} -lt 10 ]; then
+              echo " Error: K3S_TOKEN is missing or too short!"
+              exit 1
+            fi
+            
+            # --- 正規安裝 ---
+            # 使用 export 之後，直接跑 curl | sh 即可，它會自動讀取環境變數
+            curl -sfL https://get.k3s.io | sh -
+            
+            # --- 驗證 ---
             systemctl is-active --quiet k3s-agent && echo " k3s-worker-01 Joined Successfully!"
