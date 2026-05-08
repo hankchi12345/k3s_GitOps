@@ -1,6 +1,6 @@
-name: 02-Worker-Join
+name: 02-Worker-Join-Final
 on: 
-  workflow_dispatch: # 手動觸發
+  workflow_dispatch:
 
 jobs:
   join-cluster:
@@ -8,36 +8,38 @@ jobs:
     steps:
       - name: Join K3s Worker
         uses: appleboy/ssh-action@master
+        
+        env:
+          K3S_TOKEN_MASTER: ${{ secrets.K3S_TOKEN_MASTER }}
+          MASTER_IP: ${{ secrets.MASTER_IP }}
         with:
           host: ${{ secrets.WORKER_IP }}
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # 1. 確保變數名稱與 GitHub Secret 一致
+          
           envs: K3S_TOKEN_MASTER, MASTER_IP
           script: |
-            
-            # --- 基礎設定 ---
-            dnf install -y iptables iptables-services
-            hostnamectl set-hostname k3s-worker-01
-            
-           
-            # 這是為了確保 GitHub 的變數真的有傳進這台主機
-            export K3S_URL="https://${MASTER_IP}:6443"
-            export K3S_TOKEN="${K3S_TOKEN_MASTER}"
-            
-            echo "Checking environment variables..."
-            echo "Master URL: $K3S_URL"
-            echo "Token length: ${#K3S_TOKEN}"
-            
-            # 如果 Token 長度不夠，直接報錯不執行，省得 Status 4 又跑出來
-            if [ ${#K3S_TOKEN} -lt 10 ]; then
-              echo " Error: K3S_TOKEN is missing or too short!"
+            # --- 診斷區 ---
+            echo "檢查變數是否抵達遠端..."
+            echo "Master IP: $MASTER_IP"
+            echo "Token 長度: ${#K3S_TOKEN_MASTER}"
+
+            if [ ${#K3S_TOKEN_MASTER} -lt 10 ]; then
+              echo " 變數傳遞失敗！請檢查 env: 與 secrets 名稱是否對應。"
               exit 1
             fi
-            
-            # --- 正規安裝 ---
-            # 使用 export 之後，直接跑 curl | sh 即可，它會自動讀取環境變數
-            curl -sfL https://get.k3s.io | sh -
-            
-            # --- 驗證 ---
-            systemctl is-active --quiet k3s-agent && echo " k3s-worker-01 Joined Successfully!"
+
+            # --- 執行區 ---
+            # 1. 補齊工具
+            dnf install -y iptables iptables-services
+            hostnamectl set-hostname k3s-worker-01
+
+            # 2. 清理舊 Catch (你擔心的快取問題)
+            /usr/local/bin/k3s-agent-uninstall.sh || true
+            rm -rf /etc/rancher/k3s /var/lib/rancher/k3s
+
+            # 3. 安裝 (使用 Inline Prefix 確保變數鎖死)
+            curl -sfL https://get.k3s.io | \
+            K3S_URL="https://${MASTER_IP}:6443" \
+            K3S_TOKEN="${K3S_TOKEN_MASTER}" \
+            sh -s - agent
