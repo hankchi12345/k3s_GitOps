@@ -13,19 +13,19 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            # 1. 補齊工具與終極清理 (確保不會遇到 Status 4)
+            # 1. 補齊工具
             sudo dnf install -y iptables iptables-services
-            /usr/local/bin/k3s-uninstall.sh || true
-            sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /var/lib/kubelet
-            sudo ip link delete cni0 || true
-            sudo ip link delete flannel.1 || true
-            # 0.1 改名
+            
+            # 2. 【最重要】先正名
             sudo hostnamectl set-hostname k3s-worker-01
             
-            # 2. 安裝 Master (最乾淨的參數，不加任何標籤)
-            curl -sfL https://get.k3s.io | \
-            INSTALL_K3S_EXEC="server --write-kubeconfig-mode 644 --cluster-init" sh -
+            # 3. 徹底清理
+            /usr/local/bin/k3s-agent-uninstall.sh || true
+            sudo rm -rf /etc/rancher/k3s /var/lib/rancher/k3s
             
-            # 3. 等待啟動與確認 Token
-            sleep 10
-            sudo cat /var/lib/rancher/k3s/server/node-token
+            # 4. 變數準備
+            TOKEN=$K3S_TOKEN_MASTER
+            URL="https://$MASTER_IP:6443"
+            
+            # 5. 加入叢集
+            curl -sfL https://get.k3s.io | K3S_URL=$URL K3S_TOKEN=$TOKEN sh -
